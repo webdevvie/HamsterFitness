@@ -1,4 +1,8 @@
 #include <Adafruit_NeoPixel.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
 #ifdef __AVR__
   #include <avr/power.h>
 #endif
@@ -7,6 +11,39 @@
 #define hallPin 0
 #define standardDev 50
 #define largewheel 0
+#define OLED_MOSI   9
+#define OLED_CLK   10
+#define OLED_DC    11
+#define OLED_CS    12
+#define OLED_RESET 13
+#define HAMSTERFITNESS_VERSION "0.1"
+Adafruit_SSD1306 display(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS);
+
+
+#define LOGO16_GLCD_HEIGHT 16 
+#define LOGO16_GLCD_WIDTH  16 
+static const unsigned char PROGMEM logo16_glcd_bmp[] =
+{ B00000000, B11000000,
+  B00000001, B11000000,
+  B00000001, B11000000,
+  B00000011, B11100000,
+  B11110011, B11100000,
+  B11111110, B11111000,
+  B01111110, B11111111,
+  B00110011, B10011111,
+  B00011111, B11111100,
+  B00001101, B01110000,
+  B00011011, B10100000,
+  B00111111, B11100000,
+  B00111111, B11110000,
+  B01111100, B11110000,
+  B01110000, B01110000,
+  B00000000, B00110000 };
+
+#if (SSD1306_LCDHEIGHT != 64)
+#error("Height incorrect, please fix Adafruit_SSD1306.h!");
+#endif
+
 
 
 /**
@@ -25,11 +62,11 @@ const long dayLength  = 60000;//reset every 60 seconds
 
 const boolean enableSerial=true;
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(8, PIN, NEO_GRB + NEO_KHZ800);
+//Adafruit_NeoPixel strip = Adafruit_NeoPixel(8, PIN, NEO_GRB + NEO_KHZ800);
 
 
-const long lastDayStart =0;
-const long nextDayStart =0;
+ long lastDayStart =0;
+long nextDayStart =0;
 
 
 const float pi = 3.1416;
@@ -53,7 +90,8 @@ long ticks = 0;
 long rotationDistance = 0;
 long distancePerLight=0;
 boolean needsDisplayUpdate=false;
-int timeLoop=0;
+int timeloop=0;
+int turnOffDisplayTimer=0;
 //todo write stuff for day rotation
 boolean rollOver=false;
 int turnOffDisplayTimeout=9000;
@@ -63,24 +101,18 @@ boolean displayOn=true;
 void setup() {
   Serial.begin(9600);
   // put your setup code here, to run once:
-  strip.begin();
-  strip.show(); // Initialize all pixels to 'off'
-  color = strip.Color(0,0,0);
-  red = strip.Color(8,0,0);
-  orange = strip.Color(4,4,0);
-  purple = strip.Color(4,0,4);
-  teal = strip.Color(0,4,4);
-  blue = strip.Color(0,0,8);
-  green = strip.Color(0,8,0);
+  
+  // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
+  display.begin(SSD1306_SWITCHCAPVCC);
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0,0);
+  display.print("Hamster fitness v.");
+  display.println(HAMSTERFITNESS_VERSION);
+  display.display();
+  delay(2000);
 
-  colorsPerLight [0] = red;
-  colorsPerLight [1] = orange;
-  colorsPerLight [2] = orange;
-  colorsPerLight [3] = purple;
-  colorsPerLight [4] = purple;
-  colorsPerLight [5] = blue;
-  colorsPerLight [6] = teal;
-  colorsPerLight [7] = green;
   
   findNormalState();
   eightAbove = (1024 - normalState)/8;
@@ -94,7 +126,7 @@ void setup() {
     rotationDistance = 2 * pi * smallWheelRadiusInMM; 
   }
   
-  distancePerLight = healthyHamsterDistance / 8 ;
+  distancePerLight = healthyHamsterDistance / 100 ;
 
   nextDayStart = lastDayStart + dayLength;
   displayOn=true;
@@ -111,19 +143,21 @@ void findNormalState(){
   for(p=0;p<8;p++)
   {
     total+=analogRead(hallPin);
-    strip.setPixelColor(p,green); 
-    strip.show();
+    //strip.setPixelColor(p,green); 
+    //strip.show();
     delay(100);
   }
   //now figure out the avarage;
   for(p=0;p<8;p++)
   {
     total+=analogRead(hallPin);
-    strip.setPixelColor(p,0); 
-    strip.show();
+    //strip.setPixelColor(p,0); 
+    //strip.show();
     delay(100);
   }
   normalState = total/16;
+  Serial.println("Normal state");
+  Serial.println(normalState);
   
 }
 
@@ -192,16 +226,16 @@ void measureLights()
   }
   else
   {
-    strip.setPixelColor(0,0);
-    strip.setPixelColor(1,0);
-    strip.setPixelColor(2,0);
-    strip.setPixelColor(3,0);
-    strip.setPixelColor(4,0);
-    strip.setPixelColor(5,0);
-    strip.setPixelColor(6,0);
-    strip.setPixelColor(7,0);
+    //strip.setPixelColor(0,0);
+    //strip.setPixelColor(1,0);
+//    strip.setPixelColor(2,0);
+//    strip.setPixelColor(3,0);
+//    strip.setPixelColor(4,0);
+//    strip.setPixelColor(5,0);
+//    strip.setPixelColor(6,0);
+//    strip.setPixelColor(7,0);
 
-    strip.show();
+//    strip.show();
     return;
   }
   
@@ -212,30 +246,64 @@ void updateDisplay()
     {
        return;
     }
-    
+    display.clearDisplay();
+    display.setCursor(0,0);
+    display.print("Rotations:");
+    display.println(ticks);
+    //ticks
     needsDisplayUpdate=false;
     long distanceTraveled = distanceinMMTraveled();
-    byte lights = distanceTraveled /distancePerLight;
-    if(lights > 7)
-    {
-      lights = 7;
-    }
-    color = colorsPerLight[lights];
+    long width = distanceTraveled /distancePerLight;
     
-    for(byte l =0;l<8;l++)
+    display.print("Distance:");
+    
+    if(distanceTraveled >=1000000)
     {
       
-      if(l <=lights)
-      {
-        strip.setPixelColor(l,color);
-      }
-      else
-      {
-        strip.setPixelColor(l,0);
-      }
+      float traveledFL = distanceTraveled /1000000;
+
+      display.print(traveledFL);
+      display.println("KM");
+    }else if(distanceTraveled >=1000)
+    {
+      
+      
+      display.print(distanceTraveled /1000);
+      display.println("M");
+    }else if(distanceTraveled >=10)
+    {
+      
+      
+      display.print(distanceTraveled /10);
+      display.println("CM");
     }
-    strip.show();
+    else 
+    {
+      display.print(distanceTraveled);
+      display.println("MM");
+    }
+    
+    
+    
+    
+    
+    
+    
+    if(width>100)
+    {
+      width=100;
+    }
+    display.drawLine(13, 39, 115, 39, WHITE); 
+    display.drawLine(13, 39, 13, 44, WHITE); 
+    display.drawLine(13, 45, 115, 45, WHITE); 
+    display.drawLine(115, 39, 115, 44, WHITE); 
+    for(byte h=0;h<5;h++)
+    {
+      display.drawLine(14, 40+h, 14+width, 40+h, WHITE);  
+    }
+    display.display();
     triggerDisplayOff();
+    
 }
 
 void keepTime()
@@ -250,8 +318,15 @@ void keepTime()
   timeloop=0;
   //rollover
   long now = millis();
-  if((rollOver && now<lastStartDay && now>=nextStartDay) ||(!rollOver && now>=nextStartDay)
+  if((rollOver && now<lastDayStart && now>=nextDayStart) ||(!rollOver && now>=nextDayStart))
   {
+    display.clearDisplay();
+    display.setCursor(0,0);
+    display.println("     >>NEW DAY<<");
+    display.println("     >>NEW DAY<<");
+    display.println("     >>NEW DAY<<");
+    display.println("     >>NEW DAY<<");
+    display.display();
     //we are in the new day
     //move all the values:
     for(byte d =0;d<6;d++)
@@ -260,7 +335,9 @@ void keepTime()
     }
     last7Days[0]=ticks;
     ticks =0;
+    lastDayStart = nextDayStart;
     nextDayStart = nextDayStart + dayLength;
+    
     if(nextDayStart < lastDayStart)
     {
       rollOver=true;
@@ -274,16 +351,7 @@ void keepTime()
       Serial.print("Last day:");
       Serial.println(last7Days[0]);
     }
-    strip.setPixelColor(0,red);
-    strip.setPixelColor(1,orange);
-    strip.setPixelColor(2,orange);
-    strip.setPixelColor(3,purple);
-    strip.setPixelColor(4,purple);
-    strip.setPixelColor(5,blue);
-    strip.setPixelColor(6,teal);
-    strip.setPixelColor(7,green);
-    strip.show();
-    
+
     triggerDisplayOff();
   }
   
@@ -309,13 +377,16 @@ void turnOffDisplay()
   else 
   {
     displayOn=false;
+    display.clearDisplay();
+    display.display();
     for(byte l =0;l<8;l++)
     {
-      strip.setPixelColor(l,0);
+//      strip.setPixelColor(l,0);
     }
-    strip.show();
+//    strip.show();
   }
 }
+
 void loop() {
   // put your main code here, to run repeatedly:
   measure();
