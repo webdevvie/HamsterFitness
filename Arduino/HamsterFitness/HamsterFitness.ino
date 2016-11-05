@@ -1,4 +1,22 @@
-#include <Adafruit_NeoPixel.h>
+/**
+ * (c) 2016 John Bakker <me@johnbakker.name>
+ * 
+ * Hamster fitness measurement device
+ * Copyright 2016 John Bakker
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -6,67 +24,59 @@
 #ifdef __AVR__
   #include <avr/power.h>
 #endif
+#define HAMSTERFITNESS_VERSION "0.1"
 
 #define PIN 6
 #define hallPin 0
 #define standardDev 50
-#define largewheel 0
+
 #define OLED_MOSI   9
 #define OLED_CLK   10
 #define OLED_DC    11
 #define OLED_CS    12
 #define OLED_RESET 13
-#define HAMSTERFITNESS_VERSION "0.1"
+
+// please select if you have a large wheel or a small wheel. 
+#define largewheel 1
+const int largeWheelRadiusInMM= 85;
+const int smallWheelRadiusInMM= 55;
+//you can modify what the distance is you want to set as a goal. it is in MM
+const long healthyHamsterDistance= 9000000; // 9km in mm (What a healthy hamster runs every night)
+const long dayLength  = 86400000; //reset actual day length;
+//const long healthyHamsterDistance= 9000; // 900cm in mm for testing
+//const long dayLength  = 60000;//reset every 60 seconds
+const boolean enableSerial=true;
+
+
 Adafruit_SSD1306 display(OLED_MOSI, OLED_CLK, OLED_DC, OLED_RESET, OLED_CS);
-
-
 #define LOGO16_GLCD_HEIGHT 16 
 #define LOGO16_GLCD_WIDTH  16 
 static const unsigned char PROGMEM logo16_glcd_bmp[] =
-{ B00000000, B11000000,
-  B00000001, B11000000,
-  B00000001, B11000000,
-  B00000011, B11100000,
-  B11110011, B11100000,
-  B11111110, B11111000,
-  B01111110, B11111111,
-  B00110011, B10011111,
-  B00011111, B11111100,
-  B00001101, B01110000,
-  B00011011, B10100000,
-  B00111111, B11100000,
-  B00111111, B11110000,
-  B01111100, B11110000,
-  B01110000, B01110000,
-  B00000000, B00110000 };
+{ B00000000, B00000000,
+  B00111000, B00011100,
+  B01000111, B11100010,
+  B01000000, B00000010,
+  B01010000, B00001010,
+  B00100000, B00000100,
+  B00101100, B00110100,
+  B01000000, B00000010,
+  B01000001, B10000010,
+  B01000000, B00000010,
+  B00100000, B00000100,
+  B00011000, B00011000,
+  B00011111, B11111000,
+  B00011000, B00011000,
+  B00000000, B00000000,
+  B00000000, B00000000 };
 
 #if (SSD1306_LCDHEIGHT != 64)
 #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
 
 
-
-/**
- * (c) 2016 John Bakker <me@johnbakker.name>
- * 
- * Hamster fitness measurement device
- */
-
-
-const int largeWheelRadiusInMM= 85;
-const int smallWheelRadiusInMM= 55;
-//const long healthyHamsterDistance= 9000000; // 9km in mm (What a healthy hamster runs every night)
-const long healthyHamsterDistance= 9000; // 900cm in mm for testing
-//const long dayLength  = 86400000 //reset actual day length;
-const long dayLength  = 60000;//reset every 60 seconds
-
-const boolean enableSerial=true;
-
-//Adafruit_NeoPixel strip = Adafruit_NeoPixel(8, PIN, NEO_GRB + NEO_KHZ800);
-
-
- long lastDayStart =0;
+long lastDayStart =0;
 long nextDayStart =0;
+long displaycheckUpdate= 0;
 
 
 const float pi = 3.1416;
@@ -88,21 +98,21 @@ boolean hasMagnet=false;
 
 long ticks = 0;
 long rotationDistance = 0;
-long distancePerLight=0;
+long distancePerPercent=0;
 boolean needsDisplayUpdate=false;
 int timeloop=0;
 int turnOffDisplayTimer=0;
-//todo write stuff for day rotation
 boolean rollOver=false;
 int turnOffDisplayTimeout=9000;
 boolean displayOn=true;
 
-
+/**
+*/
 void setup() {
-  Serial.begin(9600);
-  // put your setup code here, to run once:
-  
-  // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
+  if(enableSerial)
+  {
+    Serial.begin(9600);
+  }
   display.begin(SSD1306_SWITCHCAPVCC);
   display.clearDisplay();
   display.setTextSize(1);
@@ -110,7 +120,13 @@ void setup() {
   display.setCursor(0,0);
   display.print("Hamster fitness v.");
   display.println(HAMSTERFITNESS_VERSION);
+  display.drawBitmap(16, 16,  logo16_glcd_bmp, 16, 16, 1);
+  
+  display.drawBitmap(48, 16,  logo16_glcd_bmp, 16, 16, 1);
+  display.drawBitmap(80, 16,  logo16_glcd_bmp, 16, 16, 1);
+  display.drawBitmap(112, 16,  logo16_glcd_bmp, 16, 16, 1);
   display.display();
+  
   delay(2000);
 
   
@@ -126,7 +142,7 @@ void setup() {
     rotationDistance = 2 * pi * smallWheelRadiusInMM; 
   }
   
-  distancePerLight = healthyHamsterDistance / 100 ;
+  distancePerPercent = healthyHamsterDistance / 100 ;
 
   nextDayStart = lastDayStart + dayLength;
   displayOn=true;
@@ -156,8 +172,11 @@ void findNormalState(){
     delay(100);
   }
   normalState = total/16;
-  Serial.println("Normal state");
-  Serial.println(normalState);
+  if(enableSerial)
+  {
+   Serial.println("Normal state");
+   Serial.println(normalState); 
+  }
   
 }
 
@@ -166,13 +185,10 @@ void updateSerial()
 
   if(enableSerial)
   {
-    
-  
     Serial.print("Distance traveled in MM");
-       
     Serial.println(distanceinMMTraveled());
-    Serial.print("Eight:");
-    Serial.println(distancePerLight);
+    Serial.print("Distance per percent:");
+    Serial.println(distancePerPercent);
   }
 }
 
@@ -226,16 +242,6 @@ void measureLights()
   }
   else
   {
-    //strip.setPixelColor(0,0);
-    //strip.setPixelColor(1,0);
-//    strip.setPixelColor(2,0);
-//    strip.setPixelColor(3,0);
-//    strip.setPixelColor(4,0);
-//    strip.setPixelColor(5,0);
-//    strip.setPixelColor(6,0);
-//    strip.setPixelColor(7,0);
-
-//    strip.show();
     return;
   }
   
@@ -253,7 +259,7 @@ void updateDisplay()
     //ticks
     needsDisplayUpdate=false;
     long distanceTraveled = distanceinMMTraveled();
-    long width = distanceTraveled /distancePerLight;
+    long width = distanceTraveled /distancePerPercent;
     
     display.print("Distance:");
     
@@ -379,11 +385,6 @@ void turnOffDisplay()
     displayOn=false;
     display.clearDisplay();
     display.display();
-    for(byte l =0;l<8;l++)
-    {
-//      strip.setPixelColor(l,0);
-    }
-//    strip.show();
   }
 }
 
@@ -394,5 +395,5 @@ void loop() {
   turnOffDisplay();
   keepTime();
   delay(1);
-
+  
 }
