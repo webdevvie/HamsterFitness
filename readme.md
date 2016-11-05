@@ -65,4 +65,4 @@ See it in action
 ----------------
 (Video goes here)
 
-<!--![IMAGE ALT TEXT](http://img.youtube.com/vi/YOUTUBE_VIDEO_ID_HERE/0.jpg)](http://www.youtube.com/watch?v=YOUTUBE_VIDEO_ID_HERE "Video Title")-->
+![IMAGE ALT TEXT](http://img.youtube.com/vi/AMvOGSK-nNA/0.jpg)](http://www.youtube.com/watch?v=AMvOGSK-nNA "Hamster fitness tracker")
